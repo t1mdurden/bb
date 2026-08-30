@@ -37,6 +37,7 @@ describe("scaffoldPlugin SDK dependency", () => {
     expect(tsconfig.compilerOptions.skipLibCheck).toBe(false);
     expect(tsconfig.include).toEqual([
       "server.ts",
+      "server.test.ts",
       "app.tsx",
       "components",
       "lib",
@@ -80,6 +81,49 @@ describe("scaffoldPlugin SDK dependency", () => {
     );
     expect(pkg.dependencies["@radix-ui/react-checkbox"]).toBeDefined();
     await access(join(targetDir, "components", "ui", "checkbox.tsx"));
+  });
+
+  it("ships a runnable test loop, not just the harness's dependencies", async () => {
+    const targetDir = join(workDir, "bb-plugin-todo");
+    await scaffoldPlugin({
+      targetDir,
+      packageName: "bb-plugin-todo",
+      bbVersion: "0.9.0",
+    });
+
+    const pkg = JSON.parse(
+      await readFile(join(targetDir, "package.json"), "utf8"),
+    );
+    expect(pkg.scripts).toEqual({
+      build: "bb plugin build",
+      test: "vitest run",
+      typecheck: "tsc --noEmit",
+    });
+    expect(pkg.devDependencies.vitest).toBeDefined();
+    expect(pkg.dependencies.vitest).toBeUndefined();
+
+    const test = await readFile(join(targetDir, "server.test.ts"), "utf8");
+    expect(test).toContain(
+      'import { createFakePluginHost } from "@get-bb/plugin-sdk/testing"',
+    );
+    expect(test).toContain('import plugin from "./server"');
+    expect(test).toContain('createFakePluginHost({ pluginId: "todo" })');
+    expect(test).toContain("harness.behavior.callRpc");
+    expect(test).toContain("harness.behavior.runCli");
+    expect(test).toContain("harness.inspection.realtimeSignals");
+  });
+
+  it("names the scoped plugin id in the starter test too", async () => {
+    const targetDir = join(workDir, "bb-plugin-todo");
+    await scaffoldPlugin({
+      targetDir,
+      packageName: "@acme/bb-plugin-todo",
+      bbVersion: "0.9.0",
+    });
+
+    expect(await readFile(join(targetDir, "server.test.ts"), "utf8")).toContain(
+      'pluginId: "todo"',
+    );
   });
 
   it("uses the canonical id in a scoped package scaffold", async () => {

@@ -9,6 +9,8 @@ import {
 import { scaffoldPlugin } from "@bb/templates/plugin-scaffold";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+const FILES_NEVER_BUNDLED = /\.test\.tsx?$/;
+
 const DIRS_WITHOUT_BUNDLED_SOURCE = new Set([
   "node_modules",
   "dist",
@@ -25,7 +27,11 @@ async function generatedSourceFiles(rootDir: string): Promise<string[]> {
         if (!DIRS_WITHOUT_BUNDLED_SOURCE.has(entry.name)) {
           await walk(entryPath);
         }
-      } else if (/\.tsx?$/.test(entry.name) && !entry.name.endsWith(".d.ts")) {
+      } else if (
+        /\.tsx?$/.test(entry.name) &&
+        !entry.name.endsWith(".d.ts") &&
+        !FILES_NEVER_BUNDLED.test(entry.name)
+      ) {
         files.push(entryPath);
       }
     }

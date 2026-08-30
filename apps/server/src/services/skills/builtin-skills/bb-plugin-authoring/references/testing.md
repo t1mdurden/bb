@@ -5,7 +5,9 @@
 ### Unit tests with `@get-bb/plugin-sdk/testing`
 
 `@get-bb/plugin-sdk/testing` is the official framework-independent harness for
-workspace and standalone plugins. The examples use Vitest. The packed package
+workspace and standalone plugins. The examples use Vitest. A current scaffold
+ships a passing `server.test.ts` and an `npm test` script, so the loop exists
+before you write anything: start by editing that file. The packed package
 ships runtime JavaScript and portable
 declarations for all three testing entrypoints. A current scaffold already declares
 `@get-bb/plugin-sdk` as an exact devDependency, so the harness is on disk after
