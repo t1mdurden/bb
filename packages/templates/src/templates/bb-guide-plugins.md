@@ -227,6 +227,22 @@ added/updated/unchanged counts.
                                  because a service ignored its abort)
   bb plugin config <id> [set <key> <value> | unset <key>]
                                  Show or change a plugin's declared settings
+  bb plugin api [symbol]         Print a plugin SDK declaration from the
+                                 bundled types the plugin compiles against
+                                 (--path <dir>, default cwd). A dotted name
+                                 prints one member (`ThreadsArea.list`);
+                                 --search <text> lists names containing it;
+                                 --entry <name> limits the lookup to one SDK
+                                 entrypoint (root, app, testing, host,
+                                 provider-bridge)
+  bb plugin icons                Print the BB icon names a manifest, a slot
+                                 registration, or the vendored <Icon> accepts
+  bb plugin rpc <id> <method> [input]
+                                 Call a loaded plugin's rpc method — the data
+                                 plane its frontend uses. [input] is the JSON
+                                 argument; --input-file <path> reads it from a
+                                 file, or from stdin with "-". Exits 1 and
+                                 prints the error envelope when the call fails
   bb plugin logs <id> [-n N] [-f]  Print (or follow) a plugin's bb.log output
   bb plugin run <id> [args...]   Run a plugin command explicitly (also works when core owns its name)
   bb plugin token <id> [--rotate]  Print the token for auth:"token" HTTP

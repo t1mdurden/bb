@@ -19,6 +19,11 @@ import {
   PLUGIN_STARTER_FILES,
 } from "./generated/plugin-starter-files.generated.js";
 
+export {
+  PLUGIN_STARTER_FILES,
+  type PluginStarterFile,
+} from "./generated/plugin-starter-files.generated.js";
+
 interface ScaffoldPluginArgs {
   targetDir: string;
   packageName: string;
@@ -1263,11 +1268,85 @@ function tsconfigSource(): string {
         noEmit: true,
         skipLibCheck: false,
       },
-      include: ["server.ts", "app.tsx", "components", "lib", "hooks"],
+      include: [
+        "server.ts",
+        "server.test.ts",
+        "app.tsx",
+        "components",
+        "lib",
+        "hooks",
+      ],
     },
     null,
     2,
   )}\n`;
+}
+
+function serverTestSource(packageName: string): string {
+  const id = derivePluginId(packageName);
+  return `// The backend test harness: a fake BB plugin host whose \`bb\` satisfies
+// BbPluginApi with host-faithful semantics — real temporary SQLite storage, the
+// kv size cap, rpc input/output validation, additive events. No server needed.
+//
+// \`harness.behavior\` drives host inputs (rpc, cli, http, services, thread
+// events, agent tools), \`harness.inspection\` exposes what the plugin did (sdk
+// calls, realtime signals, registrations), and \`harness.lifecycle\` owns
+// reload and disposal. Run it with \`npm test\`.
+import { describe, expect, it } from "vitest";
+import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
+import plugin from "./server";
+
+async function load() {
+  const { bb, harness } = createFakePluginHost({ pluginId: "${id}" });
+  await plugin(bb);
+  return harness;
+}
+
+describe("${id} todos", () => {
+  it("adds a todo through the rpc surface the page calls", async () => {
+    const harness = await load();
+
+    await harness.behavior.callRpc("todos_add", { title: "Ship it" });
+
+    expect(await harness.behavior.callRpc("todos_list", null)).toMatchObject({
+      todos: [{ title: "Ship it", done: false }],
+    });
+  });
+
+  it("completes a todo through the CLI an agent runs", async () => {
+    const harness = await load();
+    const added = (await harness.behavior.callRpc("todos_add", {
+      title: "Write the release notes",
+    })) as { id: string };
+
+    const result = await harness.behavior.runCli(["done", added.id]);
+
+    expect(result.exitCode).toBe(0);
+    expect(await harness.behavior.callRpc("todos_list", null)).toMatchObject({
+      todos: [{ id: added.id, done: true }],
+    });
+  });
+
+  it("names the stale id instead of failing silently", async () => {
+    const harness = await load();
+
+    const result = await harness.behavior.runCli(["done", "nope"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("No todo with id nope");
+  });
+
+  it("publishes a realtime signal so every open page refetches", async () => {
+    const harness = await load();
+
+    await harness.behavior.callRpc("todos_add", { title: "Ship it" });
+
+    expect(harness.inspection.realtimeSignals).toContainEqual(
+      expect.objectContaining({ channel: "todos-changed" }),
+    );
+  });
+});
+`;
 }
 
 function skillSource(packageName: string): string {
@@ -1472,6 +1551,11 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
           server: "./server.ts",
           app: "./app.tsx",
         },
+        scripts: {
+          build: "bb plugin build",
+          test: "vitest run",
+          typecheck: "tsc --noEmit",
+        },
         dependencies: {
           ...PLUGIN_STARTER_DEPENDENCIES,
           zod: "^4.3.6",
@@ -1486,6 +1570,7 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
           "cron-parser": "^5.5.0",
           hono: "^4.11.9",
           typescript: "^5.7.0",
+          vitest: "^4.1.1",
           ...PLUGIN_SHIMMED_TYPE_DEPENDENCIES,
         },
       },
@@ -1494,6 +1579,10 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
     ) + "\n",
   );
   await writeFile(join(targetDir, "server.ts"), serverEntrySource(packageName));
+  await writeFile(
+    join(targetDir, "server.test.ts"),
+    serverTestSource(packageName),
+  );
   await writeFile(join(targetDir, "app.tsx"), appEntrySource(packageName));
   await writeFile(join(targetDir, "tsconfig.json"), tsconfigSource());
   for (const file of PLUGIN_STARTER_FILES) {

@@ -116,6 +116,22 @@
     settings. Reload the plugin after configuring (`bb plugin reload <id>`).
   - `bb plugin token <id>` — print a short-lived bearer token for that plugin.
   - List, reload, enable, disable, config, and remove support `--json`.
+  - `bb plugin api [symbol] [--path <dir>]` — print an SDK declaration from the bundled
+    types the plugin compiles against, instead of grepping the declaration
+    files. `bb plugin api ThreadListArgs` prints the interface with its doc
+    comment; a dotted name prints one member (`bb plugin api ThreadsArea.list`);
+    `--search <text>` lists names containing it; `--entry <name>` limits the
+    lookup to one entrypoint (`root`, `app`, `testing`, `host`,
+    `provider-bridge`). Needs no server, and reads the plugin directory's own
+    declarations, so the answer always matches the pinned SDK.
+  - `bb plugin icons` — the BB icon names a manifest `bb.branding.icon`, a slot
+    registration's `icon`, or the vendored `<Icon name=…>` accepts. An unknown
+    name falls back to a generic glyph rather than failing, so check before
+    guessing.
+  - `bb plugin rpc <id> <method> [input]` — call a loaded plugin's rpc method,
+    the same data plane its frontend uses. `[input]` is the JSON argument;
+    `--input-file <path>` reads it from a file, or from stdin with `-`. Prints
+    the result as JSON, or the error envelope on stderr with exit 1.
   - `bb plugin logs <id> [-n N] [-f]` — the plugin's `bb.log` output.
   - `bb plugin run <id> [args...]` — explicit form; collisions log an activation
     warning and are annotated by `bb plugin list`.

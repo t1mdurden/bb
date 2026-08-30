@@ -17,8 +17,19 @@ does not cover:
    thousands of lines behind. `--check` compares declared files and package
    pins without writing. Build and dev refresh legacy declarations and warn
    about stale package pins; they do not repin installed packages or lockfiles.
-2. **Read the bundled declarations** — the authoritative surface, ~13,000
-   lines of readable declarations with doc comments:
+2. **`bb plugin api <symbol>`**, run in the plugin directory (or given
+   `--path <dir>`), prints one declaration out of those same files with its doc comment,
+   so a signature is one command rather than a search through 13,000 lines.
+   `bb plugin api ThreadListArgs` prints the interface; a dotted name prints a
+   single member (`bb plugin api ThreadsArea.list`); `--search <text>` lists the
+   names containing it when you do not know the exact one; `--entry <name>`
+   limits the lookup to one entrypoint (`root`, `app`, `testing`, `host`,
+   `provider-bridge`). It needs no server and reads the plugin's own
+   declarations, so the answer always matches its pinned SDK. Reach for this
+   before reading the files by hand.
+3. **Read the bundled declarations** — the authoritative surface, ~13,000
+   lines of readable declarations with doc comments, and where to go when you
+   want to browse a whole area rather than look one symbol up:
    - plugins scaffolded by a current bb depend on the npm package, so after
      `npm install` read
      `node_modules/@get-bb/plugin-sdk/bundled-types/bb-plugin-sdk.d.ts`

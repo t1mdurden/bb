@@ -38,6 +38,14 @@ import {
   resolvePluginBuildToolchain,
   type PluginBuildToolchain,
 } from "@bb/plugin-build";
+import {
+  findDeclarations,
+  findMembers,
+  loadSdkDeclarationFiles,
+  searchDeclarationNames,
+  type SdkDeclarationFile,
+} from "../plugin-sdk-declarations.js";
+import { iconVocabulary } from "../plugin-icon-names.js";
 import { runPluginCliCommand } from "../plugin-cli-proxy.js";
 import { resolveBbCliVersion } from "../version.js";
 
@@ -406,6 +414,18 @@ async function installScaffoldDependencies(
 
 type PluginSettingDescriptor = z.infer<typeof pluginSettingDescriptorSchema>;
 type PluginSettingsResult = z.infer<typeof pluginSettingsResultSchema>;
+
+const pluginRpcEnvelopeSchema = z.union([
+  z.object({ ok: z.literal(true), result: z.unknown() }),
+  z.object({ ok: z.literal(false), error: z.unknown() }),
+]);
+
+async function readStdin(): Promise<string> {
+  let text = "";
+  process.stdin.setEncoding("utf8");
+  for await (const chunk of process.stdin) text += chunk;
+  return text;
+}
 
 async function callPlugins(
   baseUrl: string,
@@ -1654,6 +1674,176 @@ export function registerPluginCommands(
       action(async (id: string, args: string[]) => {
         process.exit(await runPluginCliCommand(getUrl(), id, args ?? []));
       }),
+    );
+
+  plugin
+    .command("api [symbol]")
+    .description(
+      "Print a plugin SDK declaration from the bundled types a plugin compiles against (default: the current directory)",
+    )
+    .option("--path <dir>", "Plugin directory to read declarations from")
+    .option("--search <text>", "List declaration names containing <text>")
+    .option(
+      "--entry <name>",
+      "Limit to one SDK entrypoint (root, app, testing, host, provider-bridge)",
+    )
+    .option("--json", "Output JSON")
+    .action(
+      action(
+        async (
+          symbol: string | undefined,
+          opts: {
+            path?: string;
+            search?: string;
+            entry?: string;
+          } & JsonOutputOptions,
+        ) => {
+          const rootDir = resolve(opts.path ?? process.cwd());
+          const all = await loadSdkDeclarationFiles(rootDir);
+          if (all.length === 0) {
+            throw new Error(
+              `No plugin SDK declarations under ${rootDir}. Run this in a plugin directory after \`npm install\`, or pass its path.`,
+            );
+          }
+          const files: SdkDeclarationFile[] =
+            opts.entry === undefined
+              ? all
+              : all.filter((file) => file.entry === opts.entry);
+          if (files.length === 0) {
+            throw new Error(
+              `No SDK entrypoint "${opts.entry}". This plugin has: ${all.map((file) => file.entry).join(", ")}.`,
+            );
+          }
+
+          if (opts.search !== undefined) {
+            const names = searchDeclarationNames(files, opts.search);
+            if (outputJson(opts, names)) return;
+            if (names.length === 0) {
+              console.log(`No declaration name contains "${opts.search}".`);
+              return;
+            }
+            for (const found of names) {
+              console.log(`${found.name}\t${found.kind}\t${found.entry}`);
+            }
+            return;
+          }
+
+          if (symbol === undefined) {
+            throw new Error(
+              "Pass a symbol to print, or --search <text> to list names.",
+            );
+          }
+
+          const dot = symbol.lastIndexOf(".");
+          const members =
+            dot > 0
+              ? findMembers(files, symbol.slice(0, dot), symbol.slice(dot + 1))
+              : [];
+          const declarations =
+            members.length > 0 ? [] : findDeclarations(files, symbol);
+          const matches = [...members, ...declarations];
+
+          if (matches.length === 0) {
+            const nearby = searchDeclarationNames(files, symbol).slice(0, 8);
+            const hint =
+              nearby.length === 0
+                ? ""
+                : ` Did you mean: ${nearby.map((found) => found.name).join(", ")}?`;
+            throw new Error(`No declaration named "${symbol}".${hint}`);
+          }
+          if (outputJson(opts, matches)) return;
+          for (const [index, match] of matches.entries()) {
+            if (index > 0) console.log("");
+            console.log(`// ${match.entry}:${match.line}`);
+            console.log(match.text);
+          }
+        },
+      ),
+    );
+
+  plugin
+    .command("icons")
+    .description(
+      "List the BB icon names a manifest, a slot registration, or the vendored <Icon> accepts",
+    )
+    .option("--json", "Output JSON")
+    .action(
+      action(async (opts: JsonOutputOptions) => {
+        const icons = iconVocabulary();
+        if (outputJson(opts, icons)) return;
+        for (const name of icons.all) console.log(name);
+      }),
+    );
+
+  plugin
+    .command("rpc <id> <method> [input]")
+    .description(
+      "Call a loaded plugin's rpc method — the data plane its frontend uses. [input] is the JSON argument",
+    )
+    .option(
+      "--input-file <path>",
+      'Read the JSON input from a file, or "-" for stdin',
+    )
+    .action(
+      action(
+        async (
+          id: string,
+          method: string,
+          input: string | undefined,
+          opts: { inputFile?: string },
+        ) => {
+          if (input !== undefined && opts.inputFile !== undefined) {
+            throw new Error("Pass [input] or --input-file, not both.");
+          }
+          const raw =
+            opts.inputFile === undefined
+              ? input
+              : opts.inputFile === "-"
+                ? await readStdin()
+                : await readFile(opts.inputFile, "utf8");
+          let parsed: unknown = null;
+          if (raw !== undefined && raw.trim() !== "") {
+            try {
+              parsed = JSON.parse(raw);
+            } catch {
+              throw new Error("The rpc input must be JSON.");
+            }
+          }
+          const response = await cliFetch(
+            `${getUrl()}/api/v1/plugins/${encodeURIComponent(id)}/rpc/${encodeURIComponent(method)}`,
+            {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(parsed),
+            },
+          );
+          const text = await response.text();
+          let envelope: unknown;
+          try {
+            envelope = JSON.parse(text);
+          } catch {
+            throw new Error(
+              `Unexpected response from the plugin rpc route (HTTP ${response.status}): ${text.slice(0, 200)}`,
+            );
+          }
+          const wire = pluginRpcEnvelopeSchema.safeParse(envelope);
+          if (!wire.success) {
+            throw new Error(
+              `Unexpected rpc envelope from the plugin route (HTTP ${response.status}): ${text.slice(0, 200)}`,
+            );
+          }
+          if (!wire.data.ok) {
+            const { error } = wire.data;
+            console.error(
+              typeof error === "string"
+                ? error
+                : JSON.stringify(error, null, 2),
+            );
+            process.exit(1);
+          }
+          console.log(JSON.stringify(wire.data.result ?? null, null, 2));
+        },
+      ),
     );
 
   plugin

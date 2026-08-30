@@ -3,7 +3,7 @@
 ## Quickstart
 
 ```
-bb plugin new hello            # scaffolds ./bb-plugin-hello: a todo list with a sidebar page, `bb hello` CLI, and a skill
+bb plugin new hello            # scaffolds ./bb-plugin-hello: a todo list with a sidebar page, `bb hello` CLI, a skill, and a passing server.test.ts
 cd bb-plugin-hello
 bb plugin install .            # registers the directory in place (--yes to skip the prompt)
 bb plugin dev                  # rebuild app/host bundles + reload on every save
@@ -85,7 +85,10 @@ the current engine values and the entries for its generated surfaces.
   identity. The top-level package `name` remains the package identity and
   source of the plugin id.
 - `bb.branding` (required) — declare `bb.branding.icon` as either the plugin's
-  canonical BB icon name, such as `Zap`, or a plugin-relative compact SVG path
+  canonical BB icon name, such as `Zap` (`bb plugin icons` prints every name a
+  manifest, a slot registration, or the vendored `<Icon>` accepts — an unknown
+  name silently falls back to a generic glyph, so check rather than guess), or a
+  plugin-relative compact SVG path
   such as `./assets/icon.svg`. A namespaced `"<pluginId>/<name>"` glyph is
   refused here: that form is how tool presentations and provider declarations
   name a declared icon, and the plugin's own mark points at its file directly.
